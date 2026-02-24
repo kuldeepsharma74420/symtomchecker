@@ -1,0 +1,43 @@
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <app-back-button></app-back-button>
+      
+      <div class="glass-card p-4 p-md-5 fade-in">
+        <div class="text-center mb-4">
+          <h2 class="fw-bold text-primary-custom mb-2">🔍 AI Symptom Analysis</h2>
+          <p class="text-secondary-custom">Describe your symptoms and get instant AI-powered insights</p>
+        </div>
+        
+        <form (ngSubmit)="analyzeSymptoms()" class="needs-validation" novalidate>
+          <div class="mb-4">
+            <textarea 
+              class="form-control-modern w-100" 
+              [(ngModel)]="symptoms" 
+              name="symptoms" 
+              rows="6"
+              placeholder="💬 Describe your symptoms in detail... (e.g., headache, fever, cough)"
+              required></textarea>
+          </div>
+          
+          <button 
+            type="submit" 
+            class="btn btn-modern text-white w-100 d-flex align-items-center justify-content-center"
+            [disabled]="loading || !symptoms.trim()">
+            <span *ngIf="loading" class="loading-spinner me-2"></span>
+            <span *ngIf="!loading">🧠 Analyze Symptoms</span>
+            <span *ngIf="loading">Analyzing...</span>
+          </button>
+        </form>
+        
+        <div *ngIf="analysis" class="mt-4 p-4 glass-card slide-in">
+          <h4 class="text-primary-custom mb-3">📋 Analysis Results</h4>
+          <div class="text-secondary-custom">{{ analysis.aiSuggestion }}</div>
+          <small class="text-muted-custom d-block mt-2">
+            ⚠️ This is AI-generated advice. Please consult a healthcare professional for proper diagnosis.
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

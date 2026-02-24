@@ -1,0 +1,15 @@
+<h2>All Symptom Analyses</h2>
+
+<div *ngIf="analyses.length > 0; else noAnalyses">
+  <div *ngFor="let analysis of analyses">
+    <p><strong>User:</strong> {{ analysis.user?.username }}</p>
+    <p><strong>Symptoms:</strong> {{ analysis.symptoms }}</p>
+    <p><strong>AI Suggestion:</strong></p>
+    <pre>{{ analysis.aiSuggestion }}</pre>
+    <hr />
+  </div>
+</div>
+
+<ng-template #noAnalyses>
+  <p>No analyses found.</p>
+</ng-template>

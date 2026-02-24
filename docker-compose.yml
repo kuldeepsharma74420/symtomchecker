@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: symptom-checker-db
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: symptom_checker
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: symptom-checker-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/symptom_checker?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 1234
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      AZURE_AI_ENDPOINT: https://pstestopenaidply-pdv66rvyskhr2.openai.azure.com
+      AZURE_AI_KEY: be1c953f6ad849adb6e5c49fceaa968d
+      AZURE_AI_DEPLOYMENT_NAME: pstestopenaidply-pdv66rvyskhr2
+      JWT_SECRET: myVeryLongSecretKeyThatIsAtLeast256BitsLongForJWTSecurity1234567890
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: on-failure
+
+  frontend:
+    build: ./frontend
+    container_name: symptom-checker-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

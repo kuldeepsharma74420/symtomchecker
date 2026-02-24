@@ -1,0 +1,4 @@
+<app-dashboard-navbar *ngIf="shouldShowDashboardNavbar()"></app-dashboard-navbar>
+<div class="container-fluid" [style.padding-top]="shouldShowDashboardNavbar() ? '80px' : '0'">
+  <router-outlet></router-outlet>
+</div>

@@ -1,0 +1,157 @@
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <app-back-button></app-back-button>
+      
+      <div class="glass-card p-4 p-md-5 fade-in">
+        <div class="text-center mb-4">
+          <h2 class="fw-bold text-primary-custom mb-2">🗓️ My Appointments</h2>
+          <p class="text-secondary-custom">Manage your upcoming and past appointments</p>
+        </div>
+        
+        <div *ngIf="loading" class="text-center py-5">
+          <div class="loading-spinner mx-auto mb-3"></div>
+          <p class="text-secondary-custom">Loading appointments...</p>
+        </div>
+        
+        <div *ngIf="!loading && appointments.length === 0" class="text-center py-5">
+          <div class="display-1 mb-3">📅</div>
+          <h4 class="text-primary-custom mb-2">No Appointments Yet</h4>
+          <p class="text-secondary-custom mb-4">You haven't booked any appointments yet.</p>
+          <a routerLink="/book-appointment" class="btn btn-modern text-white">
+            📅 Book Appointment
+          </a>
+        </div>
+        
+        <div *ngIf="!loading && appointments.length > 0" class="row">
+          <div *ngFor="let appointment of appointments; let i = index" class="col-lg-6 mb-4">
+            <div class="glass-card-light p-4 h-100 slide-in appointment-card" [style.animation-delay]="(i * 0.1) + 's'" (click)="viewAppointmentDetails(appointment)" style="cursor: pointer;">
+              <div class="d-flex justify-content-between align-items-start mb-3">
+                <span class="badge" 
+                      [class.bg-success]="appointment.status === 'COMPLETED'"
+                      [class.bg-warning]="appointment.status === 'SCHEDULED'"
+                      [class.bg-danger]="appointment.status === 'CANCELLED'">
+                  {{appointment.status}}
+                </span>
+                <small class="text-muted-custom">{{formatDate(appointment.appointmentDate)}}</small>
+              </div>
+              
+              <!-- Show Doctor details for Patients -->
+              <div *ngIf="userRole === 'PATIENT'" class="mb-3">
+                <h5 class="text-primary-custom fw-bold mb-2">
+                  👨⚕️ Dr. {{appointment.doctor?.fullName || 'Unknown'}}
+                </h5>
+                <p class="text-secondary-custom small mb-1">
+                  📧 {{appointment.doctor?.email || 'N/A'}}
+                </p>
+                <p class="text-secondary-custom small mb-0">
+                  📞 {{appointment.doctor?.phone || 'N/A'}}
+                </p>
+              </div>
+              
+              <!-- Show Patient details for Doctors -->
+              <div *ngIf="userRole === 'DOCTOR'" class="mb-3">
+                <h5 class="text-primary-custom fw-bold mb-2">
+                  👤 {{appointment.patient?.fullName || 'Unknown Patient'}}
+                </h5>
+                <p class="text-secondary-custom small mb-1">
+                  📧 {{appointment.patient?.email || 'N/A'}}
+                </p>
+                <p class="text-secondary-custom small mb-0">
+                  📞 {{appointment.patient?.phone || 'N/A'}}
+                </p>
+              </div>
+              
+              <div class="mb-3">
+                <h6 class="text-secondary-custom fw-600 mb-2">📝 Notes:</h6>
+                <p class="text-secondary-custom small appointment-notes">
+                  {{(appointment.notes | slice:0:80) || 'No notes available'}}{{appointment.notes?.length > 80 ? '...' : ''}}
+                </p>
+              </div>
+              
+              <div class="appointment-footer">
+                <div class="appointment-time">
+                  <small class="text-muted-custom fw-bold">
+                    🕐 {{formatTime(appointment.appointmentDate)}}
+                  </small>
+                </div>
+                <div class="appointment-actions d-flex gap-2 mt-2">
+                  <button 
+                    *ngIf="appointment.status === 'SCHEDULED' && userRole === 'DOCTOR'" 
+                    class="btn btn-sm btn-success"
+                    (click)="updateStatus(appointment.id, 'COMPLETED'); $event.stopPropagation()">
+                    ✅ Complete
+                  </button>
+                  <button 
+                    *ngIf="appointment.status === 'SCHEDULED'" 
+                    class="btn btn-sm btn-outline-danger"
+                    (click)="cancelAppointment(appointment.id); $event.stopPropagation()">
+                    ❌ Cancel
+                  </button>
+                  <button class="btn btn-sm btn-outline-primary" (click)="viewAppointmentDetails(appointment); $event.stopPropagation()">
+                    👁️ View Details
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Appointment Details Modal -->
+        <div *ngIf="selectedAppointment" class="modal-overlay" (click)="closeAppointmentDetails()">
+          <div class="modal-content glass-card p-4" (click)="$event.stopPropagation()">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h4 class="card-title mb-0">📋 Appointment Details</h4>
+              <button class="btn btn-sm btn-outline-light" (click)="closeAppointmentDetails()">
+                ✕
+              </button>
+            </div>
+            
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <h6 class="text-secondary-custom">{{userRole === 'DOCTOR' ? 'Patient' : 'Doctor'}} Information</h6>
+                <p class="mb-1"><strong>Name:</strong> {{userRole === 'DOCTOR' ? selectedAppointment.patient?.fullName : selectedAppointment.doctor?.fullName}}</p>
+                <p class="mb-1"><strong>Email:</strong> {{userRole === 'DOCTOR' ? selectedAppointment.patient?.email : selectedAppointment.doctor?.email}}</p>
+                <p class="mb-1"><strong>Phone:</strong> {{(userRole === 'DOCTOR' ? selectedAppointment.patient?.phone : selectedAppointment.doctor?.phone) || 'Not provided'}}</p>
+              </div>
+              
+              <div class="col-md-6 mb-3">
+                <h6 class="text-secondary-custom">Appointment Information</h6>
+                <p class="mb-1"><strong>Date:</strong> {{formatDate(selectedAppointment.appointmentDate)}}</p>
+                <p class="mb-1"><strong>Time:</strong> {{formatTime(selectedAppointment.appointmentDate)}}</p>
+                <p class="mb-1"><strong>Status:</strong> 
+                  <span class="badge" 
+                        [class.bg-warning]="selectedAppointment.status === 'SCHEDULED'"
+                        [class.bg-success]="selectedAppointment.status === 'COMPLETED'"
+                        [class.bg-danger]="selectedAppointment.status === 'CANCELLED'">
+                    {{selectedAppointment.status}}
+                  </span>
+                </p>
+              </div>
+            </div>
+            
+            <div *ngIf="selectedAppointment.notes" class="mb-3">
+              <h6 class="text-secondary-custom">Patient Notes</h6>
+              <p class="card-text">{{selectedAppointment.notes}}</p>
+            </div>
+            
+            <div class="d-flex gap-2">
+              <button 
+                *ngIf="selectedAppointment.status === 'SCHEDULED' && userRole === 'DOCTOR'" 
+                class="btn btn-success"
+                (click)="updateStatus(selectedAppointment.id, 'COMPLETED')">
+                ✅ Mark as Completed
+              </button>
+              <button 
+                *ngIf="selectedAppointment.status === 'SCHEDULED'" 
+                class="btn btn-danger"
+                (click)="cancelAppointment(selectedAppointment.id)">
+                ❌ Cancel Appointment
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
