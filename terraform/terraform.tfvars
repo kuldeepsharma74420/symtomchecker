@@ -20,7 +20,7 @@ backend_image  = "975371763536.dkr.ecr.us-east-1.amazonaws.com/symptom-checker-b
 # Database Configuration
 db_instance_class = "db.t3.micro"
 db_username       = "admin"
-db_password       = "1234"  # CHANGE THIS!
+db_password       = "Kuldeep2002"  # CHANGE THIS!
 
 # Application Secrets
 jwt_secret          = "myVeryLongSecretKeyThatIsAtLeast256BitsLongForJWTSecurity1234567890"
