@@ -24,6 +24,6 @@ db_password       = "Kuldeep2002"  # CHANGE THIS!
 
 # Application Secrets
 jwt_secret          = "myVeryLongSecretKeyThatIsAtLeast256BitsLongForJWTSecurity1234567890"
-azure_ai_endpoint   = "https://pstestopenaidply-2o475m7f43aoa.openai.azure.com/"
-azure_ai_key        = "95a94311e4a84882a67dee27d87b2e80"
-azure_ai_deployment = "pstestopenaidply-2o475m7f43aoa"
+azure_ai_endpoint   = "https://pstestopenaidply-35hacqdtcu52o.openai.azure.com/"
+azure_ai_key        = "5cafd17959e540cfa6f008acd4f4ac76"
+azure_ai_deployment = "pstestopenaidply-35hacqdtcu52o"
