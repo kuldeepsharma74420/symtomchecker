@@ -29,8 +29,6 @@ resource "aws_service_discovery_service" "backend" {
     }
   }
 
-  health_check_grace_period_seconds = 30
-
   tags = {
     Name        = "${var.project_name}-backend-discovery"
     Environment = var.environment
