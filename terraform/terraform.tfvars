@@ -10,7 +10,7 @@ frontend_cpu    = 512
 frontend_memory = 1024
 backend_cpu     = 1024
 backend_memory  = 2048
-desired_count   = 2
+desired_count   = 1
 
 # UPDATE THESE AFTER PUSHING IMAGES TO ECR
 # Replace <account-id> with your AWS Account ID
