@@ -1,5 +1,5 @@
 resource "aws_ecs_cluster" "main" {
-  name = "enred-cluster"
+  name = "symtomchecker-cluster"
 
   tags = {
     Name        = "enred-cluster"
