@@ -2,7 +2,37 @@ resource "aws_ecs_cluster" "main" {
   name = "symtomchecker-cluster"
 
   tags = {
-    Name        = "enred-cluster"
+    Name        = "symtomchecker-cluster"
+    Environment = var.environment
+  }
+}
+
+# Service Discovery
+resource "aws_service_discovery_private_dns_namespace" "main" {
+  name = "local"
+  vpc  = var.vpc_id
+
+  tags = {
+    Name        = "${var.project_name}-service-discovery"
+    Environment = var.environment
+  }
+}
+
+resource "aws_service_discovery_service" "backend" {
+  name = "backend"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_grace_period_seconds = 30
+
+  tags = {
+    Name        = "${var.project_name}-backend-discovery"
     Environment = var.environment
   }
 }
@@ -171,6 +201,10 @@ resource "aws_ecs_service" "backend" {
     target_group_arn = var.backend_target_group_arn
     container_name   = "backend"
     container_port   = var.backend_port
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.backend.arn
   }
 
   depends_on = [var.backend_target_group_arn]

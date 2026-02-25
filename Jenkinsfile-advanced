@@ -1,0 +1,380 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '975371763536'
+        ECR_FRONTEND_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/symptom-checker-frontend"
+        ECR_BACKEND_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/symptom-checker-backend"
+        ECS_CLUSTER = 'enred-cluster'
+        FRONTEND_SERVICE = 'symptom-checker-frontend-service'
+        BACKEND_SERVICE = 'symptom-checker-backend-service'
+    }
+    
+    parameters {
+        choice(name: 'ACTION', choices: ['deploy', 'destroy', 'plan'], description: 'Select action to perform')
+        choice(name: 'ENVIRONMENT', choices: ['production', 'staging', 'development'], description: 'Target environment')
+        booleanParam(name: 'SKIP_TESTS', defaultValue: false, description: 'Skip running tests')
+        booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Auto approve Terraform apply')
+        booleanParam(name: 'SKIP_BACKEND_BUILD', defaultValue: false, description: 'Skip backend build (use existing image)')
+        booleanParam(name: 'SKIP_FRONTEND_BUILD', defaultValue: false, description: 'Skip frontend build (use existing image)')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    env.BUILD_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                    echo "Build Tag: ${env.BUILD_TAG}"
+                }
+            }
+        }
+        
+        stage('Validate') {
+            steps {
+                script {
+                    echo "Validating AWS credentials..."
+                    sh 'aws sts get-caller-identity'
+                    
+                    echo "Checking required tools..."
+                    sh '''
+                        docker --version
+                        mvn --version
+                        terraform --version
+                        aws --version
+                    '''
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            when {
+                expression { !params.SKIP_TESTS && params.ACTION == 'deploy' }
+            }
+            steps {
+                dir('backend') {
+                    sh '''
+                        echo "Running backend tests..."
+                        mvn test
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Backend') {
+            when {
+                expression { !params.SKIP_BACKEND_BUILD && params.ACTION == 'deploy' }
+            }
+            steps {
+                dir('backend') {
+                    sh '''
+                        echo "Building Spring Boot application..."
+                        mvn clean package -DskipTests
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Images') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            parallel {
+                stage('Build Backend Image') {
+                    when {
+                        expression { !params.SKIP_BACKEND_BUILD }
+                    }
+                    steps {
+                        dir('backend') {
+                            script {
+                                echo "Building backend Docker image..."
+                                sh """
+                                    docker build -t symptom-checker-backend:${BUILD_TAG} .
+                                    docker tag symptom-checker-backend:${BUILD_TAG} symptom-checker-backend:latest
+                                """
+                            }
+                        }
+                    }
+                }
+                stage('Build Frontend Image') {
+                    when {
+                        expression { !params.SKIP_FRONTEND_BUILD }
+                    }
+                    steps {
+                        dir('frontend') {
+                            script {
+                                echo "Building frontend Docker image..."
+                                sh """
+                                    docker build -t symptom-checker-frontend:${BUILD_TAG} .
+                                    docker tag symptom-checker-frontend:${BUILD_TAG} symptom-checker-frontend:latest
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Security Scan') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Running security scan on Docker images..."
+                    // Optional: Add Trivy or other security scanning tools
+                    sh '''
+                        echo "Security scan placeholder - integrate Trivy or similar tool"
+                    '''
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Logging into ECR..."
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    """
+                    
+                    if (!params.SKIP_BACKEND_BUILD) {
+                        echo "Pushing backend image..."
+                        sh """
+                            docker tag symptom-checker-backend:${BUILD_TAG} ${ECR_BACKEND_REPO}:${BUILD_TAG}
+                            docker tag symptom-checker-backend:${BUILD_TAG} ${ECR_BACKEND_REPO}:latest
+                            docker push ${ECR_BACKEND_REPO}:${BUILD_TAG}
+                            docker push ${ECR_BACKEND_REPO}:latest
+                        """
+                    }
+                    
+                    if (!params.SKIP_FRONTEND_BUILD) {
+                        echo "Pushing frontend image..."
+                        sh """
+                            docker tag symptom-checker-frontend:${BUILD_TAG} ${ECR_FRONTEND_REPO}:${BUILD_TAG}
+                            docker tag symptom-checker-frontend:${BUILD_TAG} ${ECR_FRONTEND_REPO}:latest
+                            docker push ${ECR_FRONTEND_REPO}:${BUILD_TAG}
+                            docker push ${ECR_FRONTEND_REPO}:latest
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        echo "Initializing Terraform..."
+                        terraform init -upgrade
+                    '''
+                }
+            }
+        }
+        
+        stage('Terraform Validate') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        echo "Validating Terraform configuration..."
+                        terraform validate
+                    '''
+                }
+            }
+        }
+        
+        stage('Terraform Plan') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        echo "Running Terraform plan..."
+                        terraform plan -out=tfplan -var-file=terraform.tfvars
+                        terraform show -no-color tfplan > tfplan.txt
+                    '''
+                    
+                    script {
+                        def plan = readFile('tfplan.txt')
+                        echo "Terraform Plan Output:\n${plan}"
+                    }
+                }
+            }
+        }
+        
+        stage('Terraform Apply') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                dir('terraform') {
+                    script {
+                        if (params.AUTO_APPROVE) {
+                            echo "Auto-approving Terraform apply..."
+                            sh 'terraform apply -auto-approve tfplan'
+                        } else {
+                            echo "Waiting for manual approval..."
+                            input message: 'Review the plan and approve to apply changes', ok: 'Apply'
+                            sh 'terraform apply tfplan'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Update ECS Services') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Updating ECS services with new images..."
+                    
+                    if (!params.SKIP_BACKEND_BUILD) {
+                        sh """
+                            aws ecs update-service \
+                                --cluster ${ECS_CLUSTER} \
+                                --service ${BACKEND_SERVICE} \
+                                --force-new-deployment \
+                                --region ${AWS_REGION}
+                        """
+                    }
+                    
+                    if (!params.SKIP_FRONTEND_BUILD) {
+                        sh """
+                            aws ecs update-service \
+                                --cluster ${ECS_CLUSTER} \
+                                --service ${FRONTEND_SERVICE} \
+                                --force-new-deployment \
+                                --region ${AWS_REGION}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Wait for Deployment') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Waiting for ECS services to stabilize..."
+                    timeout(time: 15, unit: 'MINUTES') {
+                        sh """
+                            aws ecs wait services-stable \
+                                --cluster ${ECS_CLUSTER} \
+                                --services ${FRONTEND_SERVICE} ${BACKEND_SERVICE} \
+                                --region ${AWS_REGION}
+                        """
+                    }
+                    echo "Services are stable!"
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                dir('terraform') {
+                    script {
+                        def albUrl = sh(returnStdout: true, script: 'terraform output -raw alb_url').trim()
+                        echo "Running health checks..."
+                        
+                        // Frontend health check
+                        sh """
+                            echo "Checking frontend..."
+                            curl -f ${albUrl} || exit 1
+                        """
+                        
+                        // Backend health check
+                        sh """
+                            echo "Checking backend..."
+                            curl -f ${albUrl}/api/health || exit 1
+                        """
+                        
+                        echo "Health checks passed!"
+                    }
+                }
+            }
+        }
+        
+        stage('Terraform Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
+            steps {
+                dir('terraform') {
+                    script {
+                        if (params.AUTO_APPROVE) {
+                            echo "Auto-approving Terraform destroy..."
+                            sh 'terraform destroy -auto-approve -var-file=terraform.tfvars'
+                        } else {
+                            input message: 'Are you sure you want to DESTROY all resources? This cannot be undone!', ok: 'Destroy'
+                            sh 'terraform destroy -auto-approve -var-file=terraform.tfvars'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Deployment Summary') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                dir('terraform') {
+                    script {
+                        def albUrl = sh(returnStdout: true, script: 'terraform output -raw alb_url').trim()
+                        def rdsEndpoint = sh(returnStdout: true, script: 'terraform output -raw rds_endpoint').trim()
+                        
+                        echo """
+                        ==========================================
+                        DEPLOYMENT SUCCESSFUL!
+                        ==========================================
+                        Environment: ${params.ENVIRONMENT}
+                        Build Tag: ${env.BUILD_TAG}
+                        
+                        Application URL: ${albUrl}
+                        Frontend: ${albUrl}
+                        Backend API: ${albUrl}/api
+                        
+                        RDS Endpoint: ${rdsEndpoint}
+                        ECS Cluster: ${ECS_CLUSTER}
+                        
+                        Frontend Service: ${FRONTEND_SERVICE}
+                        Backend Service: ${BACKEND_SERVICE}
+                        ==========================================
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh '''
+                docker image prune -f
+                docker container prune -f
+            '''
+        }
+        success {
+            echo '✅ Pipeline completed successfully!'
+            // Optional: Send notification (Slack, Email, etc.)
+        }
+        failure {
+            echo '❌ Pipeline failed!'
+            // Optional: Send failure notification
+        }
+        cleanup {
+            cleanWs()
+        }
+    }
+}
