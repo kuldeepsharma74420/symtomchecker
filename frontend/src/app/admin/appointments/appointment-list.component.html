@@ -1,0 +1,26 @@
+<h2>All Appointments</h2>
+
+<table *ngIf="appointments.length > 0; else noAppointments">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Patient</th>
+      <th>Doctor</th>
+      <th>Date</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr *ngFor="let appt of appointments">
+      <td>{{ appt.id }}</td>
+      <td>{{ appt.patient?.fullName }}</td>
+      <td>{{ appt.doctor?.fullName }}</td>
+      <td>{{ appt.appointmentDate | date:'short' }}</td>
+      <td>{{ appt.status }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<ng-template #noAppointments>
+  <p>No appointments found.</p>
+</ng-template>

@@ -1,0 +1,27 @@
+# Java/Maven
+backend/target/
+*.class
+*.jar
+*.war
+
+# Node/Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/npm-debug.log
+frontend/yarn-error.log
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

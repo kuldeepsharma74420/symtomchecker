@@ -1,0 +1,254 @@
+pipeline {
+    agent any
+
+    environment {
+        SONAR_PROJECT_NAME = 'symtomchecker'
+        GITHUB_REPO        = 'kuldeepsharma74420/symtomchecker'
+        SONAR_URL          = 'http://52.66.239.33:9000'
+    }
+
+    tools {
+        maven 'Maven-3.9'
+        nodejs 'NodeJS-18'
+    }
+
+    options {
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    extensions: [
+                        [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, timeout: 60]
+                    ],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
+                echo "Running pipeline for branch: ${env.BRANCH_NAME}"
+            }
+        }
+
+        stage('GitLeaks Secret Scan') {
+            steps {
+                sh 'gitleaks detect --source . --no-git --redact --exit-code 1'
+            }
+        }
+
+        stage('Build Backend') {
+            steps {
+                dir('backend') {
+                    sh 'mvn clean package -DskipTests'
+                }
+            }
+        }
+
+        stage('Build Frontend') {
+            steps {
+                dir('frontend') {
+                    sh '''
+                        npm install
+                        npm run build -- --configuration production
+                    '''
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        mvn sonar:sonar \
+                            -f backend/pom.xml \
+                            -Dsonar.projectKey=symtomchecker-${BRANCH_NAME} \
+                            -Dsonar.projectName=symtomchecker-${BRANCH_NAME} \
+                            -Dsonar.sources=src/main \
+                            -Dsonar.java.binaries=target/classes \
+                            -Dsonar.exclusions=**/node_modules/**,**/target/**,**/*.spec.ts
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                    branch 'develop'
+                }
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Quality Gate - Info Only') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            echo "WARNING: Quality Gate failed on branch ${env.BRANCH_NAME} with status: ${qg.status}"
+                        } else {
+                            echo "Quality Gate passed on branch ${env.BRANCH_NAME}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Post SonarQube URL to GitHub PR') {
+            when {
+                branch 'test-code'
+            }
+            steps {
+                script {
+                    def sonarProjectKey = "symtomchecker-${env.BRANCH_NAME}"
+                    def sonarReportUrl  = "${SONAR_URL}/dashboard?id=${sonarProjectKey}"
+                    def branchName      = env.BRANCH_NAME
+                    def buildNumber     = env.BUILD_NUMBER
+                    def bugsCount           = '0'
+                    def vulnerabilitiesCount = '0'
+                    def codesmellsCount     = '0'
+                    def qualityGateStatus   = 'OK'
+
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+
+                        bugsCount = sh(returnStdout: true, script: """
+                            curl -s -u \$SONAR_TOKEN: \\
+                            "${SONAR_URL}/api/measures/component?component=${sonarProjectKey}&metricKeys=bugs" \\
+                            | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+try:
+    print(d['component']['measures'][0]['value'])
+except (KeyError, IndexError):
+    print('0')
+"
+                        """).trim()
+
+                        vulnerabilitiesCount = sh(returnStdout: true, script: """
+                            curl -s -u \$SONAR_TOKEN: \\
+                            "${SONAR_URL}/api/measures/component?component=${sonarProjectKey}&metricKeys=vulnerabilities" \\
+                            | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+try:
+    print(d['component']['measures'][0]['value'])
+except (KeyError, IndexError):
+    print('0')
+"
+                        """).trim()
+
+                        codesmellsCount = sh(returnStdout: true, script: """
+                            curl -s -u \$SONAR_TOKEN: \\
+                            "${SONAR_URL}/api/measures/component?component=${sonarProjectKey}&metricKeys=code_smells" \\
+                            | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+try:
+    print(d['component']['measures'][0]['value'])
+except (KeyError, IndexError):
+    print('0')
+"
+                        """).trim()
+
+                        qualityGateStatus = sh(returnStdout: true, script: """
+                            curl -s -u \$SONAR_TOKEN: \\
+                            "${SONAR_URL}/api/qualitygates/project_status?projectKey=${sonarProjectKey}" \\
+                            | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+try:
+    print(d['projectStatus']['status'])
+except KeyError:
+    print('ERROR')
+"
+                        """).trim()
+
+                    }
+
+                    echo "Bugs: ${bugsCount}"
+                    echo "Vulnerabilities: ${vulnerabilitiesCount}"
+                    echo "Code Smells: ${codesmellsCount}"
+                    echo "Quality Gate: ${qualityGateStatus}"
+
+                    def statusText = qualityGateStatus == 'OK' ? 'PASSED' : 'FAILED'
+
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+
+                        def prNumber = sh(returnStdout: true, script: '''
+                            curl -s \
+                            -H "Authorization: token $GITHUB_TOKEN" \
+                            -H "Accept: application/vnd.github.v3+json" \
+                            "https://api.github.com/repos/kuldeepsharma74420/symtomchecker/pulls?state=open" \
+                            | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+if data and len(data) > 0:
+    print(data[0][\'number\'])
+else:
+    print(\'\')
+"
+                        ''').trim()
+
+                        echo "Found PR number: ${prNumber}"
+
+                        if (prNumber) {
+
+                            writeFile file: 'sonar-comment.json', text: """{
+  "body": "## SonarQube Code Quality Report\\n\\n| Metric | Value |\\n|--------|-------|\\n| Quality Gate | ${statusText} |\\n| Bugs | ${bugsCount} |\\n| Vulnerabilities | ${vulnerabilitiesCount} |\\n| Code Smells | ${codesmellsCount} |\\n\\n### Full Report\\n\\nSonarQube Dashboard: ${sonarReportUrl}\\n\\nBranch: ${branchName} | Build: #${buildNumber}\\n\\nPlease review the SonarQube report before merging this PR."
+}"""
+
+                            sh """
+                                curl -s -X POST \\
+                                -H "Authorization: token \$GITHUB_TOKEN" \\
+                                -H "Content-Type: application/json" \\
+                                -d @sonar-comment.json \\
+                                "https://api.github.com/repos/kuldeepsharma74420/symtomchecker/issues/${prNumber}/comments"
+                            """
+
+                            echo "SonarQube report posted to PR #${prNumber}"
+                            echo "SonarQube Report URL: ${sonarReportUrl}"
+
+                        } else {
+                            echo "No open PR found. SonarQube Report URL: ${sonarReportUrl}"
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo "Pipeline finished for branch: ${env.BRANCH_NAME}"
+            script {
+                def sonarUrl = env.SONAR_URL ?: 'http://52.66.239.33:9000'
+                echo "SonarQube Report: ${sonarUrl}/dashboard?id=symtomchecker-${env.BRANCH_NAME}"
+            }
+        }
+        success {
+            echo "Code quality check passed for branch: ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "Pipeline failed for branch: ${env.BRANCH_NAME}"
+        }
+    }
+}

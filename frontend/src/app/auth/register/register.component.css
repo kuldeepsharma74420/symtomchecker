@@ -1,0 +1,92 @@
+/* Register Page Styles */
+.form-control-modern {
+  color: #000 !important;
+  border-radius: 12px !important;
+}
+
+.form-control-modern option {
+  color: #000 !important;
+}
+.auth-container {
+  background: white;
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  margin: 80px auto;
+  text-align: center;
+}
+
+.auth-container h2 {
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #444;
+}
+
+.form-input {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #dcdfe3;
+  border-radius: 10px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  background: #f0f2f5;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #764ba2;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.1);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(118, 75, 162, 0.3);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #764ba2;
+  cursor: pointer;
+  font-size: 16px;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: #667eea;
+}
+
+.switch-text {
+  margin-top: 20px;
+  color: #666;
+}

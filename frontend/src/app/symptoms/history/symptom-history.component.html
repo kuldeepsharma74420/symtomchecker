@@ -1,0 +1,60 @@
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <app-back-button></app-back-button>
+      
+      <div class="glass-card p-4 p-md-5 fade-in">
+        <div class="text-center mb-4">
+          <h2 class="fw-bold text-primary-custom mb-2">📋 Symptom History</h2>
+          <p class="text-secondary-custom">Your previous symptom analyses and AI recommendations</p>
+        </div>
+        
+        <div *ngIf="loading" class="text-center py-5">
+          <div class="loading-spinner mx-auto mb-3"></div>
+          <p class="text-secondary-custom">Loading your history...</p>
+        </div>
+        
+        <div *ngIf="!loading && history.length === 0" class="text-center py-5">
+          <div class="display-1 mb-3">🔍</div>
+          <h4 class="text-primary-custom mb-2">No History Yet</h4>
+          <p class="text-secondary-custom mb-4">You haven't analyzed any symptoms yet.</p>
+          <a routerLink="/symptoms/analyze" class="btn btn-modern text-white">
+            🧠 Start Analysis
+          </a>
+        </div>
+        
+        <div *ngIf="!loading && history.length > 0" class="row">
+          <div *ngFor="let item of history; let i = index" class="col-12 mb-4">
+            <div class="glass-card-light p-4 slide-in" [style.animation-delay]="(i * 0.1) + 's'">
+              <div class="d-flex justify-content-between align-items-start mb-3">
+                <h5 class="text-primary-custom fw-bold mb-0">Analysis #{{history.length - i}}</h5>
+                <small class="text-muted-custom">{{formatDate(item.createdAt)}}</small>
+              </div>
+              
+              <div class="mb-3">
+                <h6 class="text-secondary-custom fw-600 mb-2">🔍 Symptoms:</h6>
+                <p class="text-secondary-custom mb-0">{{item.symptoms}}</p>
+              </div>
+              
+              <div class="mb-3">
+                <h6 class="text-secondary-custom fw-600 mb-2">🤖 AI Analysis:</h6>
+                <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+                  <p class="text-secondary-custom mb-0">{{item.aiSuggestion}}</p>
+                </div>
+              </div>
+              
+              <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted-custom">
+                  ⚠️ AI-generated advice - consult a healthcare professional
+                </small>
+                <button class="btn btn-sm btn-outline-light" (click)="reanalyze(item.symptoms)">
+                  🔄 Re-analyze
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

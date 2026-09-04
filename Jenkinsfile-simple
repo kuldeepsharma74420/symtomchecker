@@ -1,0 +1,146 @@
+// Simple Jenkins Pipeline for Symptom Checker Deployment
+// This is a beginner-friendly version with clear comments
+
+pipeline {
+    agent any
+    
+    environment {
+        // AWS Configuration - UPDATE THESE IF NEEDED
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '975371763536'
+        
+        // ECR Repository URLs
+        ECR_FRONTEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/symptom-checker-frontend"
+        ECR_BACKEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/symptom-checker-backend"
+        
+        // ECS Configuration
+        ECS_CLUSTER = 'enred-cluster'
+        FRONTEND_SERVICE = 'symptom-checker-frontend-service'
+        BACKEND_SERVICE = 'symptom-checker-backend-service'
+    }
+    
+    stages {
+        // Stage 1: Get the code from Git
+        stage('Checkout Code') {
+            steps {
+                echo '📥 Checking out code from repository...'
+                checkout scm
+            }
+        }
+        
+        // Stage 2: Build the Spring Boot backend
+        stage('Build Backend') {
+            steps {
+                echo '🔨 Building Spring Boot application...'
+                dir('backend') {
+                    sh 'mvn clean package -DskipTests'
+                }
+            }
+        }
+        
+        // Stage 3: Build Docker images
+        stage('Build Docker Images') {
+            steps {
+                echo '🐳 Building Docker images...'
+                
+                // Build backend image
+                dir('backend') {
+                    sh 'docker build -t symptom-checker-backend:latest .'
+                }
+                
+                // Build frontend image
+                dir('frontend') {
+                    sh 'docker build -t symptom-checker-frontend:latest .'
+                }
+            }
+        }
+        
+        // Stage 4: Push images to AWS ECR
+        stage('Push to ECR') {
+            steps {
+                echo '📤 Pushing images to AWS ECR...'
+                sh """
+                    # Login to ECR
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    
+                    # Tag and push backend
+                    docker tag symptom-checker-backend:latest ${ECR_BACKEND}:latest
+                    docker push ${ECR_BACKEND}:latest
+                    
+                    # Tag and push frontend
+                    docker tag symptom-checker-frontend:latest ${ECR_FRONTEND}:latest
+                    docker push ${ECR_FRONTEND}:latest
+                """
+            }
+        }
+        
+        // Stage 5: Deploy infrastructure with Terraform
+        stage('Deploy Infrastructure') {
+            steps {
+                echo '🏗️ Deploying infrastructure with Terraform...'
+                dir('terraform') {
+                    sh '''
+                        terraform init
+                        terraform plan -out=tfplan
+                        terraform apply -auto-approve tfplan
+                    '''
+                }
+            }
+        }
+        
+        // Stage 6: Update ECS services
+        stage('Update ECS Services') {
+            steps {
+                echo '🚀 Updating ECS services...'
+                sh """
+                    aws ecs update-service --cluster ${ECS_CLUSTER} --service ${FRONTEND_SERVICE} --force-new-deployment --region ${AWS_REGION}
+                    aws ecs update-service --cluster ${ECS_CLUSTER} --service ${BACKEND_SERVICE} --force-new-deployment --region ${AWS_REGION}
+                """
+            }
+        }
+        
+        // Stage 7: Wait for deployment to complete
+        stage('Wait for Deployment') {
+            steps {
+                echo '⏳ Waiting for services to stabilize...'
+                sh """
+                    aws ecs wait services-stable --cluster ${ECS_CLUSTER} --services ${FRONTEND_SERVICE} ${BACKEND_SERVICE} --region ${AWS_REGION}
+                """
+            }
+        }
+        
+        // Stage 8: Show application URL
+        stage('Get Application URL') {
+            steps {
+                echo '✅ Deployment complete!'
+                dir('terraform') {
+                    script {
+                        def appUrl = sh(returnStdout: true, script: 'terraform output -raw alb_url').trim()
+                        echo """
+                        ========================================
+                        🎉 APPLICATION DEPLOYED SUCCESSFULLY!
+                        ========================================
+                        Access your application at:
+                        ${appUrl}
+                        ========================================
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    // Post-build actions
+    post {
+        always {
+            echo '🧹 Cleaning up Docker images...'
+            sh 'docker image prune -f'
+        }
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed! Check the logs above.'
+        }
+    }
+}

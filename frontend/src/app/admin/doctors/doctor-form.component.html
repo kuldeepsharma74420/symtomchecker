@@ -1,0 +1,16 @@
+<h2>Add Doctor</h2>
+<form (ngSubmit)="addDoctor()">
+  <label>Username:</label>
+  <input [(ngModel)]="doctor.username" name="username" required /><br />
+  <label>Email:</label>
+  <input [(ngModel)]="doctor.email" name="email" required /><br />
+  <label>Password:</label>
+  <input [(ngModel)]="doctor.password" name="password" type="password" required /><br />
+  <label>Full Name:</label>
+  <input [(ngModel)]="doctor.fullName" name="fullName" required /><br />
+  <label>Phone:</label>
+  <input [(ngModel)]="doctor.phone" name="phone" /><br />
+  <button type="submit">Add Doctor</button>
+</form>
+<p>{{ message }}</p>
+``
