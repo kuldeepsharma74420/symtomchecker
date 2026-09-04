@@ -1,0 +1,91 @@
+name: Symptom Checker CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - test-code
+      - feature/**
+  pull_request:
+
+jobs:
+  build-and-scan:
+
+    runs-on: ubuntu-latest
+
+    env:
+      SONAR_PROJECT_NAME: symtomchecker
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+    steps:
+
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      ###################################
+      # GITLEAKS
+      ###################################
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh \
+          | sh -s -- -b /usr/local/bin
+
+      - name: Run Gitleaks Scan
+        run: |
+          gitleaks detect --source . --no-git --redact
+
+      ###################################
+      # BACKEND BUILD
+      ###################################
+
+      - name: Build Backend
+        working-directory: backend
+        run: |
+          mvn clean package -DskipTests
+
+      ###################################
+      # FRONTEND BUILD
+      ###################################
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: |
+          npm run build -- --configuration production
+
+      ###################################
+      # SONARQUBE SCAN
+      ###################################
+
+      - name: SonarQube Analysis
+        working-directory: backend
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn sonar:sonar \
+          -Dsonar.projectKey=symtomchecker-${GITHUB_REF_NAME} \
+          -Dsonar.projectName=symtomchecker-${GITHUB_REF_NAME} \
+          -Dsonar.host.url=${SONAR_HOST_URL} \
+          -Dsonar.token=${SONAR_TOKEN} \
+          -Dsonar.sources=src/main \
+          -Dsonar.java.binaries=target/classes \
+          -Dsonar.exclusions=**/node_modules/**,**/target/**,**/*.spec.ts
